@@ -1,0 +1,48 @@
+Sys("I64 CherubExit=FALSE;");
+Cd(__DIR__);
+CTask *cherub;
+U8 *RunCmd=CAlloc(1024);
+U8 *RomList=CAlloc(65536);
+
+I64 pos=0;
+CDirEntry *rom_f;
+CDirEntry *roms=FilesFind("Roms/*.gb;*.GB");
+
+rom_f=roms;
+while (rom_f)
+{
+  StrCopy(RomList+pos,rom_f->name);
+  pos += StrLen(rom_f->name) + 1;
+  rom_f=rom_f->next;
+};
+
+
+
+I64 rom_i = PopUpPickList(RomList);
+
+I64 incr=0;
+rom_f=roms;
+
+if (rom_i>-1)
+{
+  while (incr<rom_i)
+  {
+    rom_f=rom_f->next;
+    incr++;
+  };
+  StrCopy(Fs->task_name,"cherub launcher");
+  StrCopy(Fs->task_title,"cherub launcher");
+  StrPrint(RunCmd,"Cd(\"%s\");\n#include \"Load\";\nRun(\"%s\");\n",DirCur,rom_f->full_name);
+  cherub=User(RunCmd);
+  Sleep(100);
+  WinFocus(Fs);
+  Sleep(100);
+  WinFocus(cherub);
+  while (!CherubExit) { Sleep(1); };
+};
+
+DirEntryDel(roms);
+Free(RomList);
+Free(RunCmd);
+rom_f=NULL;
+

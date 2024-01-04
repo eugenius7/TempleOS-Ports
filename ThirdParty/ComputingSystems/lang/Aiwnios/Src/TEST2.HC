@@ -1,0 +1,3 @@
+#define IMPORT_AIWNIOS_SYMS 1
+#define TEXT_MODE 1
+#include "FULL_PACKAGE.HC";;

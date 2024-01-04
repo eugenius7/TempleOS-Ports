@@ -1,0 +1,14 @@
+/.gdb_history
+/assets/bsp/autosave/
+/build
+/tools/holytone/tonepreview
+/cachegrind.out.*
+/callgrind.out.*
+/compile_commands.json
+/embuild
+/old
+/png2bin
+/qemu
+/wadmaker
+
+*.blend1

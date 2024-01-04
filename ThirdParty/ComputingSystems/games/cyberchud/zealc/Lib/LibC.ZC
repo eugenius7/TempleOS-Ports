@@ -1,0 +1,299 @@
+#ifndef LIBC_HC
+#define LIBC_HC
+
+// Cd(__DIR__);;
+#include "Lib/CrunkComm"
+//InitComm();
+
+CTask *LibC_MainTask = Fs();
+
+extern U64 get_symbol_address(U8 *entry_name);
+
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+U64 find_u32_in_memory(U64 offset, U32 value) {
+  I64 i = 0;
+  while (MemCompare(offset + i, &value, 4))
+    i++;
+  return offset + i;
+}
+
+U8 *f_whence[3];
+f_whence[0] = "SEEK_SET";
+f_whence[1] = "SEEK_CUR";
+f_whence[2] = "SEEK_END";
+
+class FILE {
+  U8 *filename;
+  U8 *data;
+  U8 *mode;
+  I64 descriptor;
+  I64 size;
+  I64 offset;
+  I64 pos;
+};
+
+class va_list {
+  U32 gp_offset;
+  U32 fp_offset;
+  U8 *overflow_arg_area;
+  U8 *reg_save_area;
+};
+
+#define PUSH_SYSV_REGS asm {PUSH RBX PUSH R12 PUSH R13 PUSH R14 PUSH R15}
+#define POP_SYSV_REGS asm {POP R15 POP R14 POP R13 POP R12 POP RBX}
+
+#define MOV_ANS_RAX asm {MOV [&ans], RAX}
+
+I64 new_fd = 3;
+
+#define stdin 0
+#define stdout 1
+#define stderr 2
+
+U8* @calloc(U64 nmemb, U64 size) {
+  CommPrint("[calloc] task:%x nmemb:%u, size:%u\n", Fs, nmemb, size);
+  U8* ptr = CAllocAligned(nmemb * size, 64, LibC_MainTask->code_heap);
+  CommPrint("[calloc done] task:%x nmemb:%u, size:%u ptr:%x\n", Fs, nmemb, size, ptr);
+  return ptr;
+}
+U0 calloc() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RSI
+    PUSH RDI
+    CALL &@calloc
+  }
+  POP_SYSV_REGS
+}
+
+I64 @fclose(FILE *f) {
+  CommPrint("called: fclose(%d)\n", f->descriptor);
+  if (!f)
+    return NULL;
+  if (f->data)
+    Free(f->data);
+  if (f->filename)
+    Free(f->filename);
+  if (f->mode)
+    Free(f->mode);
+  Free(f);
+  return NULL;
+}
+U0 fclose() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDI
+    CALL &@fclose
+  }
+  POP_SYSV_REGS
+}
+
+FILE *@fopen(U8* filename, U8* mode) {
+  CommPrint("called: fopen(\"%s\",\"%s\")\n", filename, mode);
+  U64 file_data;
+  FILE *f;
+  if (!StrCompare(mode, "r") || !StrCompare(mode, "r+") || !StrCompare(mode, "rb")) {
+    if (!FileFind(filename))
+      return NULL;
+    f = MAllocAligned(sizeof(FILE), 64, LibC_MainTask->code_heap);
+    f->filename = StrNew(filename);
+    file_data = FileRead(filename, &f->size);
+    f->data = CAllocAligned(f->size, 64, LibC_MainTask->code_heap);
+    MemCopy(f->data, file_data, f->size);
+    f->descriptor = new_fd++;
+    f->mode = StrNew(mode);
+    CommPrint("fopen: got file descriptor %d\n", f->descriptor);
+    return f;
+  }
+}
+U0 fopen() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RSI
+    PUSH RDI
+    CALL &@fopen
+  }
+  POP_SYSV_REGS
+}
+
+I64 @fread(U8 *ptr, I64 size, I64 nmemb, FILE *f) {
+  CommPrint("called fread(0x%08x %d %d %d)\n",ptr,size,nmemb,f->descriptor);
+  MemCopy(ptr, f->data + f->pos, (size * nmemb));
+
+  //"fread @ pos, size: %d, %d\n", f->pos, (size * nmemb);
+  // D(ptr, Min(256, size * nmemb));
+
+  f->pos += (size * nmemb);
+  // if (debug.enabled)
+  // CommPrint("fread: pos: %d\n", f->pos);
+  return (size * nmemb);
+}
+U0 fread() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RCX
+    PUSH RDX
+    PUSH RSI
+    PUSH RDI
+    CALL &@fread
+  }
+  POP_SYSV_REGS
+}
+
+U0 free() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDI
+    CALL &Free
+  }
+  POP_SYSV_REGS
+}
+
+I64 @fseek(FILE *f, I64 off, I64 whence) {
+  CommPrint("called: fseek(%d %d %s)\n",f->descriptor,off,f_whence[whence]);
+  switch (whence) {
+  case SEEK_SET:
+    f->pos = off;
+    break;
+  case SEEK_CUR:
+    f->pos += off;
+    break;
+  case SEEK_END:
+    f->pos = f->size + off;
+    break;
+  }
+  return NULL;
+}
+
+U0 fseek() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDX
+    PUSH RSI
+    PUSH RDI
+    CALL &@fseek
+  }
+  POP_SYSV_REGS
+}
+
+I64 @ftell(FILE *f) {
+  CommPrint("[ftell] file:%x pos:%d\n", f, f->pos);
+  return f->pos;
+}
+U0 ftell() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDI
+    CALL &@ftell
+  }
+  POP_SYSV_REGS
+}
+
+/*
+I64 @fwrite(U8* ptr, I64 size, I64 nmemb, FILE* f) {
+  CommPrint("fwrite(0x%08x %d %d 0x%08x)\n",ptr,size,nmemb,f->descriptor);
+  if (f->descriptor(U64) >= 0x100000000) {
+    // mock for stderr problem
+    PutS(p0);
+    "\n";
+  }
+  if (f->descriptor(U64) >= 0x100000000)
+    return 0;
+
+  MemCopy(f->data + f->pos, ptr, (size * nmemb));
+//  if (debug.enabled)
+//    D(f->data + f->pos, Min(256, size * nmemb));
+  f->pos += (size * nmemb);
+  CommPrint("fwrite: pos: %d\n", f->pos);
+  return size * nmemb;
+}
+U0 fwrite() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RCX
+    PUSH RDX
+    PUSH RSI
+    PUSH RDI
+    CALL &@fwrite
+  }
+  POP_SYSV_REGS
+}
+*/
+
+U64 @malloc(U64 size) {
+  U64 ptr = NULL;
+  CommPrint("[malloc] task:%x size:%u\n", Fs, size);
+  ptr = MAllocAligned(size, 64, Fs->code_heap);
+  CommPrint("[malloc result] task:%x size:%u ptr:%x\n", Fs, size, ptr);
+  return ptr;
+}
+U0 malloc() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDI
+    CALL &@malloc
+  }
+  POP_SYSV_REGS
+}
+
+U64 @aligned_alloc(U64 alignment, U64 size) {
+  U64 ptr = NULL;
+  ptr = MAllocAligned(size, alignment, LibC_MainTask->code_heap);
+  CommPrint("aligned_alloc(%u %u) result: 0x%08x\n", alignment, size, ptr);
+  return ptr;
+}
+U0 aligned_alloc() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RSI
+    PUSH RDI
+    CALL &@aligned_alloc
+  }
+  POP_SYSV_REGS
+}
+
+I32 @fputs(U8* s) {
+  CommPutS(s);
+  return 0;
+}
+U0 fputs() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RDI
+    CALL &@fputs
+  }
+  POP_SYSV_REGS
+}
+
+U8 *@realloc(U8 *ptr, I64 size) {
+  CommPrint("[realloc] main:%x task:%x ptr:%x size:%d\n", LibC_MainTask, Fs, ptr, size);
+  U8* new;
+  if (!ptr) {
+    CommPrint("[realloc null] main:%x task:%x ptr:%x size:%d\n", LibC_MainTask, Fs, ptr, size);
+    new = MAllocAligned(size, 64, LibC_MainTask->code_heap);
+  } else {
+    CommPrint("[realloc resize] main:%x task:%x ptr:%x\n", LibC_MainTask, Fs, ptr);
+    new = MAllocAligned(size, 64, LibC_MainTask->code_heap);
+    CommPrint("[realloc memcpy] main:%x task:%x ptr:%x size:%d new:%x\n", LibC_MainTask, Fs, ptr, size, new);
+    MemCopy(new, ptr, size);
+    CommPrint("[realloc free] main:%x task:%x ptr:%x size:%d new:%x\n", LibC_MainTask, Fs, ptr, size, new);
+    Free(ptr);
+  }
+  CommPrint("[realloc return] main:%x task:%x ptr:%x new:%x\n", LibC_MainTask, Fs, ptr, new);
+  return new;
+}
+
+U0 realloc() {
+  PUSH_SYSV_REGS
+  asm {
+    PUSH RSI
+    PUSH RDI
+    CALL &@realloc
+  }
+  POP_SYSV_REGS
+}
+
+#endif

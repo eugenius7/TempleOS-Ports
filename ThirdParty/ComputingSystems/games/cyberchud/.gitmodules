@@ -1,0 +1,6 @@
+[submodule "tools/ericw-tools"]
+	path = tools/ericw-tools
+	url = https://github.com/ericwa/ericw-tools.git
+[submodule "external/cglm"]
+	path = external/cglm
+	url = https://github.com/recp/cglm.git

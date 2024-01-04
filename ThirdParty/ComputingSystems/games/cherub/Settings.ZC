@@ -1,0 +1,42 @@
+I64 audioGranularity = 20;
+
+//Auto Frame Skip
+I64 autoFrameskip = FALSE;
+
+I64 iter_per_jiffy = 500; // target # of CPU loops in 1 jiffy
+I64 frameDelay = 0; // gets auto adjusted based on iter_per_jiffy
+
+// Sound modes: 0 (Ch 01), 1 (Ch 02), 2 (Auto), 3 (Off)
+I64 soundMode=2;
+
+I64 useKeyboard=TRUE;
+I64 useGamePad=FALSE;
+
+I64 LCDScale=1;
+
+//Frameskip Amount (Auto frameskip setting allows the script to change this.)
+I64 frameskipAmount = 0;
+
+//Frameskip base factor
+I64 frameskipBaseFactor = 10;
+
+//Maximum Frame Skip
+I64 frameskipMax = 29;
+
+//Interval for the emulator loop.
+I64 loopInterval = 17;
+
+//Target number of machine cycles per loop. (4,194,300 / 1000 * 17)
+I64 machineCyclesPerLoop = 17826;
+
+//Override MBC RAM disabling and always allow reading and writing to the banks.
+I64 overrideMBC = TRUE;
+
+//Override to allow for MBC1 instead of ROM only (compatibility for broken 3rd-party cartridges).
+I64 overrideMBC1 = TRUE;
+
+//Give priority to GameBoy mode
+I64 priorizeGameBoyMode = FALSE;
+
+//Sample Rate
+I64 sampleRate = 70000;

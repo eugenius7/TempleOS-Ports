@@ -1,0 +1,13 @@
+[Person1]
+name = "John Doe" # this is an example comment
+age = 49
+weekly_income = 3200.5
+cat_owner = false
+
+
+[person2]
+name = "Sarah Greenwich" # this is an example comment
+age = 32
+weekly_income = 4432.74
+cat_owner = true
+

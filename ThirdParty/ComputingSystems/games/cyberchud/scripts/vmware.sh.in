@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -x
+mkdir -p @CMAKE_CURRENT_SOURCE_DIR@/vmware
+sudo vmware-mount -o uid=1000,gid=1000 ~/vmware/templeos/templeos.vmdk @CMAKE_CURRENT_SOURCE_DIR@/vmware
+mkdir -p @CMAKE_CURRENT_SOURCE_DIR@/vmware/Home/CyberChud
+cp @CMAKE_CURRENT_BINARY_DIR@/libcyberchud.so @CMAKE_CURRENT_BINARY_DIR@/data.wad @CMAKE_CURRENT_SOURCE_DIR@/vmware/Home/CyberChud/
+sudo vmware-mount -x

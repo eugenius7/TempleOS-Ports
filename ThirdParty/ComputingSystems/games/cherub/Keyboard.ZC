@@ -1,0 +1,81 @@
+I64 last_time = counts.jiffies,
+	sc_s = Char2ScanCode('s'),
+	sc_a = Char2ScanCode('a'),
+	sc_q = Char2ScanCode('q'),
+	sc_1 = Char2ScanCode('1'),
+	sc_2 = Char2ScanCode('2'),
+	sc_3 = Char2ScanCode('3'),
+	sc_4 = Char2ScanCode('4'),
+	sc_5 = Char2ScanCode('5'),
+	sc_7 = Char2ScanCode('7'),
+	sc_r = Char2ScanCode('r'),
+	sc_u = Char2ScanCode('u'),
+	sc_i = Char2ScanCode('i'),
+	sc_o = Char2ScanCode('o'),
+	sc_p = Char2ScanCode('p');
+
+U0 updateKeyboard()
+{
+	I64		i;
+	Bool	lcd = FALSE,
+			is_u_down = Bt(kbd.down_bitmap, sc_u),
+			is_i_down = Bt(kbd.down_bitmap, sc_i),
+			is_o_down = Bt(kbd.down_bitmap, sc_o),
+			is_p_down = Bt(kbd.down_bitmap, sc_p);
+
+	for (i = 0; i < 12; i++)
+		gp_data[i] = 0;
+
+	gp_data[0] = 0x40 * Bt(kbd.down_bitmap, sc_a);				// A
+	gp_data[1] = 0x40 * Bt(kbd.down_bitmap, sc_s);				// B
+	gp_data[2] = 0x40 * Bt(kbd.down_bitmap, SC_SHIFT);			// SELECT
+	gp_data[3] = 0x40 * Bt(kbd.down_bitmap, SC_ENTER);			// START
+	gp_data[4] = 0x40 * Bt(kbd.down_bitmap, SC_CURSOR_UP);		// UP
+	gp_data[5] = 0x40 * Bt(kbd.down_bitmap, SC_CURSOR_DOWN);	// DOWN
+	gp_data[6] = 0x40 * Bt(kbd.down_bitmap, SC_CURSOR_LEFT);	// LEFT
+	gp_data[7] = 0x40 * Bt(kbd.down_bitmap, SC_CURSOR_RIGHT);	// RIGHT
+	gp_data[8] = 0x40 * Bt(kbd.down_bitmap, sc_q);				// 'ToggleSound'
+	gp_data[9] = 0x40 * Bt(kbd.down_bitmap, sc_7);				// 'SaveState'
+	gp_data[10] = 0x40 * Bt(kbd.down_bitmap, SC_ESC);			// Exit
+	gp_data[11] = 0x40 * Bt(kbd.down_bitmap, sc_5);				// 'LoadState'
+
+	if (Bt(kbd.down_bitmap, sc_r))
+	{
+		StrCopy(DisplayMsg, "Reset");
+		DisplayMsgTicks=1;
+		initEmulator;
+	}
+
+	if (is_u_down || is_i_down || is_o_down || is_p_down)
+	{
+		if (counts.jiffies > last_time + 500)
+		{ // make color changing slow enough to see changes
+			if (is_u_down)
+				COLOR1 = ++COLOR1 % 16;
+			if (is_i_down)
+				COLOR2 = ++COLOR2 % 16;
+			if (is_o_down)
+				COLOR3 = ++COLOR3 % 16;
+			if (is_p_down)
+				COLOR4 = ++COLOR4 % 16;
+
+			last_time = counts.jiffies;
+		}
+	}
+	else
+		last_time = 0;
+
+	if (lcd = Bt(kbd.down_bitmap, sc_1))
+		LCDScale = 1;
+	else if (lcd = Bt(kbd.down_bitmap, sc_2))
+		LCDScale = 2;
+	else if (lcd = Bt(kbd.down_bitmap, sc_3))
+		LCDScale = 3;
+	else if (lcd = Bt(kbd.down_bitmap, sc_4))
+		LCDScale = 4;
+
+	if (lcd)
+		SetLCDScale;
+
+};
+

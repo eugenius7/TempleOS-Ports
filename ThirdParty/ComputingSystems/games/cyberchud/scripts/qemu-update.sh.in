@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -x
+VM_DIR=vm/qemu
+VM_IMG=$VM_DIR/templeos.qcow2
+MNT_DIR=$VM_DIR/mnt
+HOME_DIR=$MNT_DIR/Home
+INSTALL_DIR=$HOME_DIR/CyberChud
+
+# Modprobe
+sudo modprobe nbd max_part=4
+
+# Mount
+mkdir -p $MNT_DIR
+sudo qemu-nbd -c /dev/nbd0 $VM_IMG
+sudo partprobe /dev/nbd0
+sudo mount -o rw,uid=1000,gid=1000 /dev/nbd0p1 $MNT_DIR
+
+# Copy
+mkdir -p $INSTALL_DIR
+sudo cp @CMAKE_CURRENT_SOURCE_DIR@/scripts/Once.HC $HOME_DIR
+sudo cp -r @CMAKE_CURRENT_SOURCE_DIR@/holyc/* $INSTALL_DIR
+sudo cp libcyberchud.so data.wad $INSTALL_DIR/
+
+# Unmount
+sudo umount $MNT_DIR
+sudo qemu-nbd -d /dev/nbd0
+
+# Run
+qemu-system-x86_64 -audiodev sdl,id=snd0 -machine pc,accel=kvm,pcspk-audiodev=snd0 -drive file=$VM_IMG,index=0,media=disk -m 4G -smp 8 -serial tcp::7770,server,nowait

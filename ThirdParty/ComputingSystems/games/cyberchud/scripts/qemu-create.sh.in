@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -x
+VM_DIR=vm/qemu
+VM_IMG=$VM_DIR/templeos.qcow2
+VM_ISO=@CMAKE_CURRENT_SOURCE_DIR@/vm/distro/TOS_Distro.ISO
+MNT_DIR=$VM_DIR/mnt
+
+mkdir -p $VM_DIR
+qemu-img create -f qcow2 $VM_IMG 1G
+qemu-system-x86_64 -audiodev sdl,id=snd0 -machine pc,accel=kvm,pcspk-audiodev=snd0 -drive file=$VM_IMG,index=0,media=disk -drive file=$VM_ISO,index=1,media=cdrom -m 4G -smp 8

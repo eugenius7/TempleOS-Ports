@@ -1,0 +1,424 @@
+#define EI_NIDENT 16
+#define EM_X86_64 0x3E
+#define ET_EXEC 2
+#define ET_DYN 3
+
+#define STT_OBJECT 1
+#define STT_FUNC 2
+
+class Elf64_Ehdr {
+  U8 e_ident[EI_NIDENT]; /* Magic number and other info */
+  U16 e_type;            /* Object file type */
+  U16 e_machine;         /* Architecture */
+  U32 e_version;         /* Object file version */
+  U64 e_entry;           /* Entry point virtual address */
+  U64 e_phoff;           /* Program header table file offset */
+  U64 e_shoff;           /* Section header table file offset */
+  U32 e_flags;           /* Processor-specific flags */
+  U16 e_ehsize;          /* ELF header size in bytes */
+  U16 e_phentsize;       /* Program header table entry size */
+  U16 e_phnum;           /* Program header table entry count */
+  U16 e_shentsize;       /* Section header table entry size */
+  U16 e_shnum;           /* Section header table entry count */
+  U16 e_shstrndx;        /* Section header string table index */
+};
+
+class Elf64_Shdr {
+  U32 sh_name;      /* Section name (string tbl index) */
+  U32 sh_type;      /* Section type */
+  U64 sh_flags;     /* Section flags */
+  U64 sh_addr;      /* Section virtual addr at execution */
+  U64 sh_offset;    /* Section file offset */
+  U64 sh_size;      /* Section size in bytes */
+  U32 sh_link;      /* Link to another section */
+  U32 sh_info;      /* Additional section information */
+  U64 sh_addralign; /* Section alignment */
+  U64 sh_entsize;   /* Entry size if section holds table */
+};
+
+class Elf64_Sym {
+  U32 st_name;  /* Symbol name (string tbl index) */
+  U8 st_info;   /* Symbol type and binding */
+  U8 st_other;  /* Symbol visibility */
+  U16 st_shndx; /* Section index */
+  U64 st_value; /* Symbol value */
+  U64 st_size;  /* Symbol size */
+};
+
+class PLT_entry {
+  U8 pad[0x10];
+};
+
+class RELA_entry {
+  U64 r_offset;
+  U64 r_info;
+  I64 r_addend;
+};
+
+class Elf {
+  union {
+    U8 *u8;
+    Elf64_Ehdr *ehdr;
+  } I64 size;
+  U8 *dynstr;
+  Elf64_Sym *dynsym;
+  PLT_entry *plt;
+  RELA_entry *rela_dyn;
+  RELA_entry *rela_plt;
+  Elf64_Sym *strtab;
+  Elf64_Sym *symtab;
+  I64 rela_dyn_size;
+  I64 rela_plt_size;
+  I64 strtab_size;
+  I64 symtab_size;
+  I64 dynsym_size;
+};
+
+U0 (*_init)() = NULL;
+U0 (*_loop)() = NULL;
+I32 (*_check_if_quitting)() = NULL;
+U8 *segments = NULL;
+U0 (*_quit)() = NULL;
+
+U0 unimplemented_symbol() {
+  I32 s = 0xDEADF00D;
+  "Unimplemented symbol: %s\n", s;
+  while (1)
+    Sleep(1);
+}
+
+U0 _exit() {
+  MOV_ANS_RAX
+  throw('end', TRUE);
+}
+
+U0 symbol_split(U8* entry_name, U8* entry_split) {
+  I64 i, strlen = StrLen(entry_name);
+  for (i=0; i<strlen; i++) {
+    if (entry_name[i] == '@') {
+      entry_split[i] = '\0';
+      break;
+    }
+    entry_split[i] = entry_name[i];
+  }
+  entry_split[strlen] = '\0';
+}
+
+Bool is_valid_elf(Elf *elf) {
+  Bool res = TRUE;
+  if (MemCompare(elf->u8 + 1, "ELF", 3)) {
+    CommPutS("Invalid signature (not ELF).\n");
+    res = FALSE;
+  }
+  if (elf->ehdr->e_type != ET_EXEC && elf->ehdr->e_type != ET_DYN) {
+    CommPutS("Invalid object file type.\n");
+    res = FALSE;
+  }
+  if (elf->ehdr->e_machine != EM_X86_64) {
+    CommPutS("Invalid architecture.\n");
+    res = FALSE;
+  }
+  return res;
+}
+
+U0 find_value(U8 *value) {
+  U64 addr = 0x0;
+  while (addr < 0x2000000) {
+    if (!MemCompare(addr, value, StrLen(value))) {
+      "found at 0x%08x\n", addr;
+      return;
+    }
+    addr++;
+  }
+  "not found\n";
+}
+
+U0 process_elf_section_header_table(Elf *elf) {
+  Elf64_Shdr *shdr = elf->u8 + elf->ehdr->e_shoff;
+  Elf64_Shdr *shdr_shstrtab = shdr + elf->ehdr->e_shstrndx;
+  U8 *shstrtab = elf->u8 + shdr_shstrtab->sh_offset;
+
+  I64 i = 0;
+  U64 lastAddr = 0;
+  U64 size = 0;
+  for (i=0; i<elf->ehdr->e_shnum; i++, shdr++) {
+    if (shdr->sh_addr >= lastAddr){
+      lastAddr = shdr->sh_addr;
+      size = shdr->sh_size;
+    }
+  }
+  segments = CAllocAligned(lastAddr+size, 64);
+  CommPrint("segment|addr:0x%x size:%u\n", segments, lastAddr+size);
+
+  shdr = elf->u8 + elf->ehdr->e_shoff;
+  for (i=0; i<elf->ehdr->e_shnum; i++, shdr++) {
+    if (!StrCompare(shstrtab + shdr->sh_name, ".symtab")) {
+      CommPrint("found symtab at 0x%08x, size = %d\n", shdr->sh_offset,
+                  shdr->sh_size);
+      elf->symtab = elf->u8 + shdr->sh_offset;
+      elf->symtab_size = shdr->sh_size;
+    } else if (!StrCompare(shstrtab + shdr->sh_name, ".strtab")) {
+      CommPrint("found strtab at 0x%08x, size = %d\n", shdr->sh_offset,
+                  shdr->sh_size);
+      elf->strtab = elf->u8 + shdr->sh_offset;
+      elf->strtab_size = shdr->sh_size;
+    }
+    if (shdr->sh_addr) {
+      CommPrint(
+          "Copy section '%s' to addr 0x%06x, size: %d bytes\n",
+          shstrtab + shdr->sh_name, shdr->sh_addr, shdr->sh_size);
+      MemCopy(segments + shdr->sh_addr, elf->u8 + shdr->sh_offset, shdr->sh_size);
+      if (!StrCompare(shstrtab + shdr->sh_name, ".dynstr")) {
+        elf->dynstr = segments + shdr->sh_addr;
+      } else if (!StrCompare(shstrtab + shdr->sh_name, ".dynsym")) {
+        elf->dynsym = segments+shdr->sh_addr;
+        elf->dynsym_size = shdr->sh_size / shdr->sh_entsize;
+      } else if (!StrCompare(shstrtab + shdr->sh_name, ".plt")) {
+        elf->plt = segments+shdr->sh_addr;
+      } else if (!StrCompare(shstrtab + shdr->sh_name, ".rela.dyn")) {
+        elf->rela_dyn = segments+shdr->sh_addr;
+        elf->rela_dyn_size = shdr->sh_size / shdr->sh_entsize;
+      } else if (!StrCompare(shstrtab + shdr->sh_name, ".rela.plt")) {
+        elf->rela_plt = segments+shdr->sh_addr;
+        elf->rela_plt_size = shdr->sh_size / shdr->sh_entsize;
+      } else if (!StrCompare(shstrtab + shdr->sh_name, ".bss")) {
+        MemSet(segments + shdr->sh_addr, NULL, shdr->sh_size);
+        CommPrint("MemSet section '%s' at physical address 0x%06x to NULL, "
+                    "size = %d bytes\n",
+                    shstrtab + shdr->sh_name, shdr->sh_addr, shdr->sh_size);
+      }
+    }
+  }
+}
+
+U0 process_elf_rela_dyn_entries(Elf *elf) {
+  I64 i, ii;
+  U8 *entry_name;
+  RELA_entry *rela_dyn = elf->rela_dyn;
+  for (i = 0; i < elf->rela_dyn_size; i++, rela_dyn++) {
+    entry_name = elf->dynstr + elf->dynsym[(rela_dyn->r_info >> 32)].st_name;
+    CommPrint("[rela.dyn] name:%s offset:0x%x\n", entry_name, rela_dyn->r_offset);
+    if (!StrCompare(entry_name, "stdin")) {
+      *(rela_dyn->r_offset)(U64 *) = 0;
+      CommPrint("Set value for .rela.dyn entry '%s' to: %d\n", entry_name, 0);
+    } else if (!StrCompare(entry_name, "stdout")) {
+      *(rela_dyn->r_offset)(U64 *) = 1;
+      CommPrint("Set value for .rela.dyn entry '%s' to: %d\n", entry_name, 1);
+    } else if (!StrCompare(entry_name, "stderr")) {
+      *(rela_dyn->r_offset)(U64 *) = 2;
+      CommPrint("Set value for .rela.dyn entry '%s' to: %d\n", entry_name, 2);
+    } else if (entry_name[0] != '\0') {
+      CommPrint(".rela.dyn entry: %s 0x%x\n", entry_name, (segments+rela_dyn->r_offset)[0]);
+      U8 entry_split[128];
+      symbol_split(entry_name, entry_split);
+      CHashClass* addr = get_symbol_address(entry_split);
+      if (addr) {
+        CommPrint("patch: %x %s %x\n", segments+rela_dyn->r_offset, entry_split, addr);
+        *((segments+rela_dyn->r_offset)(U64*)) = addr;
+      }
+      Elf64_Sym* dynsym = elf->dynsym;
+      for (ii = 0; ii<elf->dynsym_size; ii++, dynsym++) {
+        U8* dynsym_entry_name = elf->dynstr + dynsym->st_name;
+        if (!StrCompare(dynsym_entry_name, entry_name)) {
+          U64* got_addr = segments + rela_dyn->r_offset;
+          U64* got_value = segments + dynsym->st_value;
+          CommPrint("[rela.dyn] name:%s offset:0x%x value:0x%x got_addr:0x%x got_value:0x%x\n", entry_name, rela_dyn->r_offset, dynsym->st_value, got_addr, got_value);
+          *got_addr = got_value;
+          break;
+        }
+      }
+    }
+  }
+}
+
+U0 process_elf_dynsym_entries(Elf *elf) {
+  I64 i;
+  U8 *entry_name;
+  Elf64_Sym* dynsym = elf->dynsym;
+  for (i = 0; i<elf->dynsym_size; i++) {
+    entry_name = elf->dynstr + dynsym->st_name;
+    CommPrint("[dynsym] name:%s value:0x%x\n", entry_name, dynsym->st_value);
+    if (!StrCompare(entry_name, "init")) {
+      _init = dynsym->st_value;
+    } else if (!StrCompare(entry_name, "loop")) {
+      _loop = dynsym->st_value;
+    } else if (!StrCompare(entry_name, "check_if_quitting")) {
+      _check_if_quitting = dynsym->st_value;
+    } else if (!StrCompare(entry_name, "quit")) {
+      _quit = dynsym->st_value;
+    }
+    dynsym++;
+  }
+}
+
+CHashClass *get_symbol_hash_entry(U8 *entry_name) {
+  I64 i;
+  CHashSrcSym *sym;
+  CHashTable *tbl = Fs->hash_table;
+  while (tbl) {
+    for (i = 0; i < tbl->mask; i++) {
+      sym = tbl->body[i];
+      while (sym) {
+        if (sym->type == HTT_CLASS)
+          if (!StrCompare(sym->str, entry_name))
+            return sym;
+        sym = sym->next;
+      }
+    }
+    tbl = tbl->next;
+  }
+  return NULL;
+}
+
+U0 process_elf_debug_symbols(Elf *elf) {
+  I64 i = 0;
+  I64 entry_bind;
+  U64 entry_name;
+  I64 entry_type;
+  CHashFun *hf;
+  CHashGlobalVar *hgv;
+  Elf64_Sym *symtab = elf->symtab;
+  entry_name = elf->strtab;
+  entry_name += symtab->st_name;
+  while (i < elf->symtab_size) {
+    entry_bind = symtab->st_info >> 4;
+    entry_type = symtab->st_info & 0xf;
+    switch (entry_type) {
+    case STT_OBJECT:
+      hgv = CAllocAligned(sizeof(CHashGlobalVar), 16);
+      hgv->str = entry_name;
+      hgv->type = HTT_GLOBAL_VAR;
+      hgv->data_addr = symtab->st_value;
+      hgv->size = symtab->st_size;
+      // TempleOS reboots if I nest a switch table here, for some reason, so we
+      // have to do this dumb shit instead...
+      hgv->var_class = get_symbol_hash_entry("U32");
+      if (hgv->size == 1)
+        hgv->var_class = get_symbol_hash_entry("U8");
+      if (hgv->size == 2)
+        hgv->var_class = get_symbol_hash_entry("U16");
+      HashAdd(hgv, Fs->hash_table);
+      CommPrint(
+          "Add global variable '%s' to hash table, addr = 0x%08x, size = %d\n",
+          entry_name, symtab->st_value, symtab->st_size);
+      break;
+    case STT_FUNC:
+      hf = CAllocAligned(sizeof(CHashFun), 16);
+      hf->str = entry_name;
+      hf->type = HTT_FUN;
+      hf->exe_addr = symtab->st_value;
+      hf->size = symtab->st_size;
+      HashAdd(hf, Fs->hash_table);
+      CommPrint("Add function '%s' to hash table, addr = 0x%08x, size = %d\n",
+                  entry_name, symtab->st_value, symtab->st_size);
+      break;
+    }
+    symtab++;
+    i++;
+    entry_name = elf->strtab;
+    entry_name += symtab->st_name;
+  }
+}
+
+U64 get_symbol_address(U8 *entry_name) {
+  I64 i;
+  CHashSrcSym *sym;
+  CHashTable *tbl = Fs->hash_table;
+  while (tbl) {
+    for (i = 0; i < tbl->mask; i++) {
+      sym = tbl->body[i];
+      while (sym) {
+        if (sym->type == HTT_GLOBAL_VAR)
+          if (!StrCompare(sym->str, entry_name))
+            return sym(CHashGlobalVar *)->data_addr;
+        if (sym->type == HTT_FUN)
+          if (!StrCompare(sym->str, entry_name))
+            return sym(CHashFun *)->exe_addr;
+        sym = sym->next;
+      }
+    }
+    tbl = tbl->next;
+  }
+  return NULL;
+}
+
+U0 process_elf_rela_plt_entries(Elf *elf) {
+  I64 i, ii;
+  U32 handler;
+  U32 *patch;
+  U8 *entry_name;
+  PLT_entry *plt = elf->plt;
+  RELA_entry *rela_plt = elf->rela_plt;
+  plt++;
+  for (i = 0; i < elf->rela_plt_size; i++) {
+    entry_name = elf->dynstr + elf->dynsym[(rela_plt->r_info >> 32)].st_name;
+    U8 entry_split[128];
+    symbol_split(entry_name, entry_split);
+    CommPrint("[rela.plt] name:%s split:%s offset:0x%x\n",entry_name,entry_split,rela_plt->r_offset);
+    CommPrint("[rela.plt] name:%s plt:0x%x\n",entry_name,plt);
+    handler = CAllocAligned(sizeof(unimplemented_symbol), 16, Fs->code_heap);
+    MemCopy(handler, &unimplemented_symbol, sizeof(unimplemented_symbol));
+    patch = handler + 0x0A;
+    *patch = entry_name;
+    U64* got_addr = segments+rela_plt->r_offset;
+    CHashClass* addr = get_symbol_address(entry_split);
+    if (addr) {
+      *got_addr = addr;
+      CommPrint("[got.plt] name:%s addr:%x value:%x\n", entry_name, got_addr, *got_addr);
+    } else {
+      Elf64_Sym* dynsym = elf->dynsym;
+      for (ii = 0; ii<elf->dynsym_size; ii++, dynsym++) {
+        entry_name = elf->dynstr + dynsym->st_name;
+        if (!StrCompare(entry_name, entry_split)) {
+          CommPrint("rela_plt %s %x dst_addr:%x\n", entry_name, dynsym->st_value, segments+dynsym->st_value);
+          *got_addr = segments+dynsym->st_value;
+/*
+          if (!StrCompare(entry_name, "new_mob")) {
+            CommPrint("Breakpoint Set: %x\n", got_addr);
+            BptS(*got_addr);
+          }
+*/
+          break;
+        }
+      }
+    }
+    rela_plt++;
+    plt++;
+  }
+}
+
+U0 load_elf(...) {
+  if (argc < 1) {
+    PrintErr("Not enough arguments.\n");
+    return;
+  }
+  if (!FileFind(argv[0])) {
+    PrintErr("File not found: %s\n", argv[0]);
+    return;
+  }
+
+  Elf elf;
+  elf.u8 = FileRead(argv[0], &elf.size);
+  CommPrint("Load file '%s', size = %d bytes\n", argv[0], elf.size);
+
+  if (!is_valid_elf(&elf)) {
+    PrintErr("File is not a valid ELF x86-64 executable.\n");
+    return;
+  }
+
+  process_elf_section_header_table(&elf);
+  process_elf_dynsym_entries(&elf);
+  process_elf_rela_dyn_entries(&elf);
+  process_elf_rela_plt_entries(&elf);
+  //process_elf_debug_symbols(&elf);
+  CommPrint("done process\n");
+
+  _init = segments + _init;
+  _loop = segments + _loop;
+  _check_if_quitting = segments + _check_if_quitting;
+  _quit = segments + _quit;
+//  BptS(segments+0xb829);
+//  U64 ptr = _init;
+//  BptS(ptr+0x1f);
+  CommPrint("entry: 0x%X\nfile: 0x%x\n", _init, elf);
+}

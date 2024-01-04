@@ -1,0 +1,17 @@
+###########
+# Folders #
+###########
+
+*.bak
+backups
+images
+isos
+mnt
+
+
+
+#########
+# Files #
+#########
+
+*.img

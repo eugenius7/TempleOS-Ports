@@ -1,0 +1,7 @@
+
+# Keep ISO and disk img here:
+scratch/
+
+# Other STL files that I don't want to commit.  Some are quite large
+DATA/*.stl
+

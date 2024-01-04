@@ -1,0 +1,100 @@
+/**
+	@defgroup GLDraw Draw
+	@brief Functions for drawing to textures.
+*/
+
+/**
+	@ingroup GLDraw
+	@brief Draw pixel on color texture. Does not check boundaries, point
+	must be fully inside texture.
+
+	@param[in]     x		X position.
+	@param[in]     y		Y position.
+	@param[in]     color	Color of point.
+*/
+U0 GLDrawPixel(I64 x, I64 y, CBGR24 color)
+{
+    gGLC.colorTarget->rawBuf[x + y * gGLC.colorTarget->w] = color;
+}
+
+/**
+	@ingroup GLDraw
+	@brief Draw line on color texture. Does not check boundaries, line must
+	be fully inside texture.
+
+	@param[in]     x0		Start x.
+	@param[in]     y0		Start y.
+	@param[in]     x1		End x.
+	@param[in]     y1		End y.
+	@param[in]     color	Color of line.
+*/
+U0 GLDrawLine(I64 x0, I64 y0, I64 x1, I64 y1, CBGR24 color)
+{
+	Bool steep;
+	I64 temp,
+		delta_x, delta_y, error,
+		step_y, x, y,
+		targetW;
+
+	CBGR24 *target = gGLC.colorTarget->rawBuf;
+	targetW = gGLC.colorTarget->w;
+
+	steep = Abs(y1 - y0) > Abs(x1 - x0);
+
+	if (steep == TRUE)
+    {
+		temp = x0;
+		x0 = y0;
+		y0 = temp;
+		temp = x1;
+		x1 = y1;
+		y1 = temp;
+    }
+
+	if (x0 > x1)
+	{
+		temp = x0;
+		x0 = x1;
+		x1 = temp;
+		temp = y0;
+		y0 = y1;
+		y1 = temp;	
+	}
+
+	delta_x = x1 - x0;
+	delta_y = Abs(y1 - y0);
+	error = delta_x / 2;
+
+	step_y;
+	
+	if (y0 < y1)
+	{
+		step_y = 1;
+	}
+	else
+	{
+		step_y = -1;
+	}
+
+	y = y0;
+	
+	for (x = x0; x < x1 + 1; x++)
+	{
+		if (steep == TRUE)
+		{
+			target[y + x * targetW] = color;
+		}
+		else
+		{
+			target[x + y * targetW] = color;
+		}
+
+		error -= delta_y;
+
+		if (error < 0)
+		{
+			y += step_y;
+			error += delta_x;
+		}
+	}
+}

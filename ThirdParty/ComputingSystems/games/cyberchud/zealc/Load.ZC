@@ -1,0 +1,124 @@
+U0 EnableSSE() {
+  asm
+  {
+  MOV_EAX_CR0
+  AND AX, 0xFFFB // clear coprocessor emulation CR0.EM
+  OR AX, 0x2 // set coprocessor monitoring  CR0.MP
+  MOV_CR0_EAX
+  MOV_EAX_CR4
+  OR EAX, 3 << 9 // set CR4.OSFXSR and CR4.OSXMMEXCPT at the same time
+  MOV_CR4_EAX
+  }
+}
+EnableSSE;
+
+#include "Lib/CrunkComm";
+InitComm();
+
+#include "Lib/LibC";
+#include "Lib/SDL2";
+#include "Lib/ELF64";
+
+DocMax;
+WinMax;
+
+CBGR48 game_palette[COLORS_NUM]={
+0xFFFFFFFFFFFF,0x03000000FFFF,0x000000000000,0x1ccc10000666,
+0x38881fff0bbb,0x54442fff1111,0x70003eee1666,0xeccc4eee1ccc,
+0xa8885eee2111,0xc4446ddd2777,0xe0007ddd2ccc,0xffff8eee3222,
+0x7A7A0909FAFA,0xFFFFC8C82525,0xFFFFC8002500,0x000000000000};
+//0x7A7A0909FAFA,0xFFFFC8C82525,0xFFFFC8002500,0xFFFFFFFFFFFF};
+
+I32 quit_var = 0;
+U0 BlazeItFgt() {
+  SettingsPush;
+  Fs->text_attr=BLACK<<4+WHITE;
+  MenuPush(
+        "File {"
+        "  Abort(,CH_SHIFT_ESC);"
+        "  Exit(,CH_ESC);"
+        "}"
+        "Play {"
+        "  Up(,'w');"
+        "  Down(,'s');"
+        "  Left(,'a');"
+        "  Right(,'d');"
+        "  Weapon1(,'1');"
+        "  Weapon2(,'2');"
+        "  KillSnd(,'m');"
+        "}"
+        );
+  AutoComplete;
+  WinBorder;
+  WinMax;
+  DocCursor;
+  DocClear;
+  //GrPaletteSet(gr32_palette_std);
+  Fs->win_inhibit=WIG_TASK_DEFAULT-WIF_SELF_FOCUS-WIF_SELF_BORDER-WIF_FOCUS_TASK_MENU;
+  load_elf("libcyberchud.so");
+  //GrPaletteSet(game_palette);
+  PUSH_R
+  asm {
+    PUSH RBP
+    MOV RBP,RSP
+
+    MOV RCX,RSP
+    AND ECX,63
+    JE init_aligned
+    MOV EDX,64
+    SUB EDX,ECX
+    SUB RSP,RDX
+init_aligned:
+    CALL [&_init]
+    MOV RSP,RBP
+    POP RBP
+  }
+  POP_R
+  while (!quit_var) {
+    PUSH_R
+    asm {
+      PUSH RBP
+      MOV RBP,RSP
+      MOV RCX,RSP
+      AND ECX,63
+      JE @@loop_aligned
+      MOV EDX,64
+      SUB EDX,ECX
+      SUB RSP,RDX
+@@loop_aligned:
+      CALL [&_loop]
+      CALL [&_check_if_quitting]
+      MOV [&quit_var],EAX
+      MOV RSP,RBP
+      POP RBP
+    }
+    POP_R
+//    Refresh;
+//    FlushMsgs;
+  }
+  PUSH_R
+  asm {
+    PUSH RBP
+    MOV RBP,RSP
+    MOV RCX,RSP
+    AND ECX,15
+    JE @@stack_aligned
+    MOV EDX,16
+    SUB EDX,ECX
+    SUB RSP,RDX
+@@stack_aligned:
+    CALL [&_quit]
+    MOV RSP,RBP
+    POP RBP
+  }
+  POP_R
+  Fs->draw_it = NULL;
+  Refresh;
+  MenuPop;
+  DocClear;
+  SettingsPop;
+  gr.fp_draw_mouse=&DrawStdMouse;
+  SoundReset;
+}
+
+BlazeItFgt;
